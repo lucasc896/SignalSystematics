@@ -16,11 +16,52 @@ r.TH2.SetDefaultSumw2(1)
 ###---------------------------------------------------------------------------------------------###
 ###---------------------------------------------------------------------------------------------###
 
+def safe_divide(num = None, denom = None):
+    if denom > 0.:
+        return float(num/denom)
+    else:
+        return 0.
+
+def safe_sqrt(num = None):
+    if num > 0.:
+        return ma.sqrt(num)
+    else:
+        return 0.
+
+def syst_picker(pos = (), neg = ()):
+
+    class syst(object):
+        def __init__(self, data = ()):
+            self.val = data[0]
+            self.err = data[1]
+            self.rerr = safe_divide(data[1], data[0])
+        def __str__(self):
+            return "syst_obj: %.2f +/- %2f (%.4fper)" % (self.val, self.err, self.rerr*100.)
+
+    # assign largest central value to 'a'
+    if pos[0] >= neg[0]:
+        a = syst(pos)
+        b = syst(neg)
+    else:
+        a = syst(neg)
+        b = syst(pos)
+
+    # if rel err on a is bigger than twice rel err on b
+    if a.rerr > 2*b.rerr:
+        # and if lower bound on a is less than b, use b
+        if (a.val-a.err < b.val):
+            print "DODGEY!"
+            return b.val, b.err
+
+    return a.val, a.err
+
+
 class effMap(object):
     '''container for efficiency map'''
     def __init__(self, nom = None, denom = None, nom_err = None, denom_err = None, noweight = False):
         self._hist = None
         self._errHist = None
+        self._relErrHist = None
         self._nom = nom
         self._nomerr = nom_err
         self._denom = denom
@@ -74,6 +115,8 @@ class effMap(object):
             # create a histogram of eff errors
             self.makeErrorHist()
 
+        self.makeRelErrorHist()
+
     def makeErrorHist(self):
         '''caclulate bin by bin stat absolute error'''
 
@@ -91,80 +134,76 @@ class effMap(object):
 
             # if no existing error hists are passed, calc from scratch
             if not self._nomerr and not self._denomerr:
+                print ">>> No error histograms passed to effMap."
                 # if denom hist, sum stat errors
                 if self._denom:
                     nom_val     = self._nom.GetBinContent(i)
                     denom_val   = self._denom.GetBinContent(i)
 
-                    if nom_val > 0. and denom_val > 0.:
+                    # if nom_val > 0. and denom_val > 0.:
                         
-                        # calculate the statistical error for each yield
-                        nom_err     = 1./ma.sqrt(nom_val)
-                        denom_err   = 1./ma.sqrt(denom_val)
+                    #     # calculate the statistical error for each yield
+                    #     nom_err     = 1./ma.sqrt(nom_val)
+                    #     denom_err   = 1./ma.sqrt(denom_val)
 
-                        nom_ratio = nom_err/nom_val
-                        denom_ratio = denom_err/denom_val
+                    #     nom_ratio = nom_err/nom_val
+                    #     denom_ratio = denom_err/denom_val
                     
-                        eff_val = nom_val/denom_val
-                        eff_err = eff_val*ma.sqrt(nom_ratio+denom_ratio)
+                    #     eff_val = nom_val/denom_val
+                    #     eff_err = eff_val*ma.sqrt(nom_ratio+denom_ratio) # should be squared sum
                     
-                    else:
-                        # set to zero if either hist has no entries
-                        eff_err = 0.
+                    # else:
+                    #     # set to zero if either hist has no entries
+                    #     eff_err = 0.
+
+                    nom_err     = safe_divide(1., safe_sqrt(nom_val))
+                    denom_err   = safe_divide(1., safe_sqrt(dennom_val))
+
+                    nom_ratio   = safe_divide(nom_err, nom_val)
+                    denom_ratio = safe_divide(denom_err, denom_val)
+
+                    eff_val = safe_divide(nom_val, denom_val)
+                    eff_err = eff_val*safe_sqrt(ma.pow(nom_ratio, 2) + ma.pow(denom_ratio, 2))
+
                 else:
                     # if no denom hist, just use error cald'd from nom hist
                     eff_val = self._nom.GetBinContent(i)
-                    if eff_val > 0.:
-                        eff_err = 1./ma.sqrt(eff_val)
-                    else:
-                        eff_err = 0.
+                    # BUG - is this correct?
+                    eff_err = safe_divide(1., safe_sqrt(eff_val))
                     
             else:
+                # in here if error histograms were passed
 
                 if self._noweight:
                     # if self._noweight is True, then the noweight yields have been passed as error
                     # histograms
-                    nom_val     = self._nomerr.GetBinContent(i)
-                    denom_val   = self._denomerr.GetBinContent(i)
+                    nom_val_err     = self._nomerr.GetBinContent(i)
+                    denom_val_err   = self._denomerr.GetBinContent(i)
 
-                    if nom_val > 0. and denom_val > 0.:
-                        # calculate the statistical error for each yield
-                        nom_err     = 1./ma.sqrt(nom_val)
-                        denom_err   = 1./ma.sqrt(denom_val)
-
-                        nom_ratio = nom_err/nom_val
-                        denom_ratio = denom_err/denom_val
-                    
-                        eff_val = nom_val/denom_val
-                        eff_err = eff_val*ma.sqrt(nom_ratio+denom_ratio)
-                    else:
-                        eff_err = 0.
-
+                    # error is calculated from each as the pure MC stat uncert: err = 1/sqrt(N)
+                    nom_err = safe_divide(1., safe_sqrt(nom_val_err))
+                    denom_err = safe_divide(1., safe_sqrt(denom_val_err))
                 else:
                     # if error hists are passed, combine
                     nom_err     = self._nomerr.GetBinContent(i)
                     denom_err   = self._denomerr.GetBinContent(i)
-                    eff_err     = ma.sqrt(ma.pow(nom_err, 2) + ma.pow(denom_err, 2))
 
-                    # print "Nom_err: %f, denom_err: %f, eff_err: %f" % (nom_err, denom_err, eff_err)
+                nom_val     = self._nom.GetBinContent(i)
+                denom_val   = self._denom.GetBinContent(i)
 
-                    if self._denom:
-                        if self._denom.GetBinContent(i) > 0.:
-                            eff_val = self._nom.GetBinContent(i)/self._denom.GetBinContent(i)
-                    else:
-                        eff_val = 0.
-            
+                nom_ratio = safe_divide(nom_err, nom_val)
+                denom_ratio = safe_divide(denom_err, denom_val)
+
+                eff_val = safe_divide(nom_val, denom_val)
+                eff_err = eff_val * safe_sqrt( ma.pow(nom_ratio, 2) + ma.pow(denom_ratio, 2) )
+        
             self._errHist.SetBinContent(i, eff_err)
-            
-        #   if self._debug_err:
 
-        #       xbin, ybin, zbin = r.Long(0.), r.Long(0.), r.Long(0.)
-        #       self._nom.GetBinXYZ(i, xbin, ybin, zbin)
-        #       print i, "mStop: %f, mLSP: %f" % (self._nom.GetXaxis().GetBinCenter(xbin), self._nom.GetYaxis().GetBinCenter(ybin))
-        #       print "Nom_val: %f, Nom_err: %f, denom_val: %f, denom_err: %f, total_eff_err: %f" % (nom_val, nom_err, denom_val, denom_err, eff_err)
-        #   # if nom_val and denom_val:
-        #   #   print "Nom_val: %f, Nom_err: %f, denom_val: %f, denom_err: %f" % (nom_val, nom_err, denom_val, denom_err)
-        # if self._debug_err: print ""
+    def makeRelErrorHist(self):
+        '''make histo of relative errs'''
+        self._relErrHist = self._errHist.Clone()
+        self._relErrHist.Divide(self._hist)
+
     def shiftCentre(self, shift = 0.):
         '''Shift all values by 1, to centre around zero'''
         self._mean  += shift
@@ -234,6 +273,7 @@ class systMap(object):
                         "up_change":    None,
                         "down_change":  None,
                         }
+
         self._syst = None
         self._model = model
         self._test = test
@@ -253,7 +293,7 @@ class systMap(object):
         try:
             self._plotSpec = pdets.modelPlotDetails[self._model]
         except KeyError:
-            # print ">>> Warning: systMap: Model details not found. Using default values."
+            print ">>> Warning: systMap: Model details not found. Using default values."
             self._plotSpec = {
                     'xRange': [0., 1000.],
                     'yRange': [0., 1000.],
@@ -267,7 +307,7 @@ class systMap(object):
         try:
             self._plotSpec['zRange'] = pdets.systZRanges[self._test]
         except KeyError:
-            # print ">>> Warning: systMap: Test zRange not found. Using default values."
+            print ">>> Warning: systMap: Test zRange not found. Using default values."
             self._plotSpec['zRange'] = [0.9,1.1]
 
         self.makeSystPlots()
@@ -286,7 +326,7 @@ class systMap(object):
                     self._yieldPlots['up'].SetBinContent(bin, 0.)
                     self._yieldPlots['nocuts'].SetBinContent(bin, 0.)
                     if self._yieldPlots['down']: self._yieldPlots['down'].SetBinContent(bin, 0.)
-        
+
         # create a load of effMap objects for each variation
         if any(self._yieldPlots_noweight.values()):
             self._effs['central']   = effMap(self._yieldPlots['central'],
@@ -299,7 +339,8 @@ class systMap(object):
                                                 self._yieldPlots_noweight['up_noweight'],
                                                 self._yieldPlots_noweight['nocuts_noweight'],
                                                 True)
-            self._effs['up_change'] = effMap(self._effs['up']._hist, self._effs['central']._hist,
+            self._effs['up_change'] = effMap(self._effs['up']._hist,
+                                                self._effs['central']._hist,
                                                 self._effs['up']._errHist,
                                                 self._effs['central']._errHist)
         
@@ -322,6 +363,11 @@ class systMap(object):
         else:
             exit("No noweights histograms passed to systMap object.")
 
+        #########################################################
+        # here we should have effMap objects for all variations #
+        # now go on the create a total systematics map          #
+        #########################################################
+
         if self._cutSyst:
             ### cut hist scenario ###
             # invert up_change to represent a cut efficiency
@@ -342,19 +388,30 @@ class systMap(object):
                 tmp_hist.SetBinContent(i, -666.)
                 continue
 
+            # get all systematic values
             pos_syst = abs(self._effs['up_change']._hist.GetBinContent(i))
+            pos_err = abs(self._effs['up_change']._errHist.GetBinContent(i))
             if self._effs['down_change']:
                 neg_syst = abs(self._effs['down_change']._hist.GetBinContent(i))
+                neg_err = abs(self._effs['down_change']._errHist.GetBinContent(i))
             else:
                 neg_syst = -1.
+                neg_err = 0.000001
 
-            # pick the bigger of both variations
-            if pos_syst >= neg_syst:
-                this_syst = pos_syst
-                this_err = self._effs['up_change']._errHist.GetBinContent(i)
-            else:
-                this_syst = neg_syst
-                this_err = self._effs['down_change']._errHist.GetBinContent(i)
+            
+            # pick the most significant systematic, based on requirements in syst_picker()
+            this_syst, this_err = syst_picker( (pos_syst, pos_err), (neg_syst, neg_err) )
+
+            # if pos_syst >= neg_syst:
+            #     this_syst = pos_syst
+            #     this_err = self._effs['up_change']._errHist.GetBinContent(i)
+            #     # print " ", this_syst, this_err, safe_divide(this_err, this_syst)
+            #     # print neg_syst, neg_err, safe_divide(neg_err, neg_syst)
+            # else:
+            #     this_syst = neg_syst
+            #     this_err = self._effs['down_change']._errHist.GetBinContent(i)
+            #     # print " ", this_syst, this_err, safe_divide(this_err, this_syst)
+            #     # print pos_syst, pos_err, safe_divide(pos_err, pos_syst)
 
             tmp_hist.SetBinContent(i, this_syst)
             tmp_errHist.SetBinContent(i, this_err)
@@ -408,12 +465,16 @@ class systMap(object):
                             "%s Systematic - %s" % (self._test, label), 
                             "Systematic Value",
                             0.)
-            # self.draw_plot(self._syst,
-            #                 pdf0,
-            #                 "%s Systematic Error - %s" % (self._test, label), 
-            #                 "Systematic Value",
-            #                 0., err=True)
-
+            self.draw_plot(self._syst,
+                            pdf0,
+                            "%s Systematic Error - %s" % (self._test, label), 
+                            "Systematic Value",
+                            0., err=True)
+        
+            # also draw relative err value - for debugging purproses
+            self._syst._relErrHist.Draw("text")
+            pdf0.AddPage()
+        
         pdf0.close()
 
     def draw_plot(self, effMap = None, pdfFile = None, title = "", zTitle = "", shiftZ = 0., err = False):
