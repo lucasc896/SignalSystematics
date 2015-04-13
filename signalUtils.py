@@ -235,14 +235,16 @@ def syst_smooth(eff = None, err = None, iterations = 1):
     itera = 0
     # note: ONLY WORKS FOR T2CC AND T24BODY because of binning assumptions
     while itera < iterations:
+        print "Iter:", itera
         for xbin in range(1, eff.GetNbinsX()+100):
             for ybin in range(1, eff.GetNbinsY()+100):
 
                 val = eff.GetBinContent(xbin, ybin)
+                # skip null points
                 if val <= 0.: continue
+
                 vals = []
                 errs = []
-
                 for xtmp in range(-2,3):
                     tmp_val = eff.GetBinContent( xbin+xtmp, ybin+xtmp*5)
                     if tmp_val > 0.:
@@ -269,19 +271,29 @@ def syst_smooth(eff = None, err = None, iterations = 1):
                             errs.append(float(1./math.pow(tmp_err, 1)))
                         else:
                             errs.append(0.)
-                # get weighted average considering errs
-                err_sum = np.sum(errs)
-                vals_array = np.array(vals)
-                to_rej = reject_outliers(vals_array)
+                     
+                # if it's one of the 5 GeV mass splitting points...
+                if (eff.GetXaxis().GetBinCenter(xbin) - eff.GetYaxis().GetBinCenter(ybin)) == 5.:
+                    # use only the value of the 10 GeV mass splitting bin also to compare with
+                    # note: should also include the side bins too
+                    vals = [eff.GetBinContent(xbin, ybin), eff.GetBinContent(xbin, ybin-1),]
 
+                # remove outliers from array of values gathered from nearby bins
+                vals_array = np.array(vals)
+                # to_rej = reject_outliers(vals_array)
+                to_rej = []
+
+                # create new lists with outliers rejected
                 new_vals = []
                 new_errs = []
                 for n in range(len(vals)):
                     if n not in to_rej:
                         new_vals.append(vals[n])
                         new_errs.append(errs[n])
+                
                 err_sum = np.sum(new_errs)
                 if err_sum>0.:
+                    # normalise errors?
                     for j in range(len(new_errs)):
                         new_errs[j]/=err_sum
                     ave_val = np.average(new_vals, weights=new_errs)
@@ -289,9 +301,20 @@ def syst_smooth(eff = None, err = None, iterations = 1):
                     # should only be in here in err == None
                     ave_val = np.average(new_vals)
 
-                if ave_val == np.nan:
-                    ave_val = 1.
-                new_hist.SetBinContent(xbin, ybin, ave_val)
+                # when does this happen?
+                if str(ave_val) == "nan":
+                    print "Avg val = nan"
+                    print new_vals
+                    print new_errs
+                    print eff.GetXaxis().GetBinCenter(xbin)
+                    print eff.GetYaxis().GetBinCenter(ybin)
+
+                if abs(ave_val - val)/val > 0.2:
+                    print ">20percent change in smoothing (%.1f, %.1f)" % (eff.GetXaxis().GetBinCenter(xbin),
+                                                                            eff.GetYaxis().GetBinCenter(ybin))
+                    print "Old val: %.5f\nNew val: %.5f" % (val, ave_val)
+                if str(ave_val) != "nan":
+                    new_hist.SetBinContent(xbin, ybin, ave_val)
         itera+=1
 
         eff = new_hist.Clone()
