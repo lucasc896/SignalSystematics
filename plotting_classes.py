@@ -1,5 +1,6 @@
 # import plottingUtils as putils
 import signalUtils as sutils
+import plotDetails as pdets
 import numpy as np
 import ROOT as r
 import math as ma
@@ -90,7 +91,6 @@ class effMap(object):
         if self._denom:
             self._hist = self._nom.Clone()
             self._hist.Divide(self._denom)
-
         self._nBins = self._hist.GetNbinsX() * self._hist.GetNbinsY() + 1000
         vals = []
         for i in range(1, self._nBins):
@@ -134,7 +134,7 @@ class effMap(object):
 
             # if no existing error hists are passed, calc from scratch
             if not self._nomerr and not self._denomerr:
-                print ">>> No error histograms passed to effMap."
+                # print ">>> No error histograms passed to effMap."
                 # if denom hist, sum stat errors
                 if self._denom:
                     nom_val     = self._nom.GetBinContent(i)
@@ -157,7 +157,7 @@ class effMap(object):
                     #     eff_err = 0.
 
                     nom_err     = safe_divide(1., safe_sqrt(nom_val))
-                    denom_err   = safe_divide(1., safe_sqrt(dennom_val))
+                    denom_err   = safe_divide(1., safe_sqrt(denom_val))
 
                     nom_ratio   = safe_divide(nom_err, nom_val)
                     denom_ratio = safe_divide(denom_err, denom_val)
@@ -215,16 +215,16 @@ class effMap(object):
             if val > 0.:
                 self._hist.SetBinContent(i, val+shift)
             else:
-                # set null points to -1000.
+                # set null points to -666.
                 self._hist.SetBinContent(i, -666.)
+                # self._hist.SetBinContent(i, 0.)
 
     def invertHist(self):
         ''' invert an effMap object and all attributes'''
-        for attr in [self._mean, self._min, self._max]:
-            try:
-                attr = 1./attr
-            except ZeroDivisionError:
-                attr = 0.
+
+        self._mean  = safe_divide(1., self._mean)
+        self._min   = safe_divide(1., self._min)
+        self._max   = safe_divide(1., self._max)
                 
         for i in range(1, self._hist.GetNbinsX()*
                         self._hist.GetNbinsY()+1000):
@@ -267,6 +267,14 @@ class systMap(object):
                                         }
 
         self._effs = {
+                        "up":           None,
+                        "down":         None,
+                        "central":      None,
+                        "up_change":    None,
+                        "down_change":  None,
+                        }
+
+        self._effs_1d = {
                         "up":           None,
                         "down":         None,
                         "central":      None,
@@ -343,10 +351,12 @@ class systMap(object):
                                                 self._effs['central']._hist,
                                                 self._effs['up']._errHist,
                                                 self._effs['central']._errHist)
-        
             if not self._cutSyst:# and self._test != "LeptonVeto":
                 # only shift to centre around 0 if it's not a cut systematic
                 self._effs['up_change'].shiftCentre(-1)
+
+            for key in ['central', 'up_change']:
+                self._effs_1d[key] = self.make_1d_plot(self._effs[key]._hist)
 
             # if 2-way syst vari exists, do down variation
             if self._yieldPlots['down']:
@@ -360,6 +370,7 @@ class systMap(object):
                                                         self._effs['down']._errHist,
                                                         self._effs['central']._errHist)
                 self._effs['down_change'].shiftCentre(-1)
+                self._effs_1d['down_change'] = self.make_1d_plot(self._effs['down_change']._hist)
         else:
             exit("No noweights histograms passed to systMap object.")
 
@@ -386,6 +397,7 @@ class systMap(object):
             # skip null points
             if abs(self._effs['up_change']._hist.GetBinContent(i)) == 666.:
                 tmp_hist.SetBinContent(i, -666.)
+                # tmp_hist.SetBinContent(i, 0.)
                 continue
 
             # get all systematic values
@@ -416,8 +428,17 @@ class systMap(object):
             tmp_hist.SetBinContent(i, this_syst)
             tmp_errHist.SetBinContent(i, this_err)
         
+        # squash the outliers, if there are any
+        tmp_hist = self.squash_outliers(tmp_hist)
+
+        if self._model not in ["T2cc", "T2_4body"]:
+            # fill any holes, so every point has a systematic
+            tmp_hist = self.fill_holes(tmp_hist)
+
         # create effMap from new total syst hist
         self._syst = effMap(nom = tmp_hist, nom_err = tmp_errHist)
+
+        self._syst_1d = self.make_1d_plot(self._syst._hist)
 
         # now need to smooth this final map to account for fluctuations
         # self.syst_smooth(self._syst)
@@ -438,25 +459,11 @@ class systMap(object):
 
         # create instance of a multi page PDF
         pdf0 = multiPagePDF(outFileName = "out/%s_%s_%s.pdf" % (self._model, self._test, label),
-                            title = "Systematics - %s - %s" % (self._test, label))
+                            title = "Systematics - %s - %s" % (self._test, label),
+                            title_page = False)
 
         # setup fine grain z-axis
         sutils.set_palette()
-
-        # draw each variation
-        for key in ["central", "up", "up_change", "down", "down_change"]:
-            if "down" not in key or self._effs['down']:
-                self.draw_plot(self._effs[key],
-                                pdf0,
-                                "Efficiency %s %s - %s" % (self._test, key, label),
-                                "Acceptance",
-                                1. if "change" in key else 0.)
-                self.draw_plot(self._effs[key],
-                              pdf0,
-                              "Efficiency %s %s Error - %s" % (self._test, key, label),
-                              "Acceptance",
-                              1. if "change" in key else 0., err=True)
-
 
         if not self._cutSyst:
             # draw total systematic (don't plot for cut systematics)
@@ -470,12 +477,123 @@ class systMap(object):
                             "%s Systematic Error - %s" % (self._test, label), 
                             "Systematic Value",
                             0., err=True)
-        
+
             # also draw relative err value - for debugging purproses
-            self._syst._relErrHist.Draw("text")
+            # self._syst._relErrHist.Draw("colztext")
+            # self._syst._relErrHist.SetTitle("Relative Error")
+            # pdf0.AddPage()
+
+            pdf0.setLogY(1)
+            self._syst_1d.Draw("hist")
             pdf0.AddPage()
+            pdf0.setLogY(0)
+
+        # draw each variation
+        for key in ["central", "up", "up_change", "down", "down_change"]:
+            if "down" not in key or self._effs['down']:
+                
+                if self._cutSyst and key == "up_change":
+                    key_string = "acceptance"
+                else:
+                    key_string = key
+
+                self.draw_plot(self._effs[key],
+                                pdf0,
+                                "Efficiency %s %s - %s" % (self._test,
+                                    key_string, label),
+                                "Acceptance",
+                                1. if "change" in key else 0.)
+                self.draw_plot(self._effs[key],
+                              pdf0,
+                              "Efficiency %s %s Error - %s" % (self._test, key_string, label),
+                              "Acceptance",
+                              1. if "change" in key else 0., err=True)
+                if self._effs_1d[key]:
+
+                    pdf0.setLogY(1)
+                    r.gStyle.SetOptStat(111111)
+                    self._effs_1d[key].Draw("hist")
+                    pdf0.AddPage()
+                    pdf0.setLogY(0)
+                    r.gStyle.SetOptStat(0)
         
         pdf0.close()
+
+    def squash_outliers(self, hist = None):
+        vals = []
+        points = []
+        for i in range(1, self._nBins + 1):
+            val = hist.GetBinContent(i)
+            centers = sutils.get_bin_centre_vals(hist, i)
+            if centers['x'] > centers['y']:
+                if val > 0.:
+                    vals.append(val)
+                    points.append(centers)
+
+        to_squash = sutils.reject_outliers(vals, 3.)
+
+        print "squash length:", len(to_squash)
+
+        for sq in to_squash:
+            # new_val = np.median(vals)*2. #new val to replace outliers
+
+            # try replacing with the median, rather than x2
+            new_val = np.median(vals) #new val to replace outliers - very non-conservative?
+
+            point = points[sq]
+            bin = hist.FindBin(point['x'], point['y'])
+            hist.SetBinContent(bin, new_val)
+
+        return hist
+
+    def fill_holes(self, hist = None):
+
+        for xbin in range(1, hist.GetNbinsX()+1):
+            for ybin in range(1, hist.GetNbinsY()+1):
+                centers = {'x': hist.GetXaxis().GetBinCenter(xbin),
+                            'y': hist.GetYaxis().GetBinCenter(ybin)}
+                
+                # only consider points in the scan
+                if not pdets.point_white_list(self._model)(centers['x'], centers['y']): continue
+
+                val = hist.GetBinContent(xbin, ybin)
+                
+                if val > 0.: continue
+
+                to_avg = []
+                # get swiss cross values to avg over
+                for xtmp in [-1, 1]:
+                    tmpval = hist.GetBinContent(xbin+xtmp, ybin)
+                    if tmpval > 0.:
+                        to_avg.append(tmpval)
+
+                for ytmp in [-1, 1]:
+                    tmpval = hist.GetBinContent(xbin, ybin+ytmp)
+                    if tmpval > 0.:
+                        to_avg.append(tmpval)
+
+                if len(to_avg) > 0:
+                    avgval = np.average(to_avg)
+                    hist.SetBinContent(xbin, ybin, avgval)
+
+        return hist
+
+    def make_1d_plot(self, hist = None):
+        
+        outhist = r.TH1D("1d", "1d", 200, 0, 0.6)
+
+        for i in range(1, self._nBins+1):
+            centers = sutils.get_bin_centre_vals(hist, i)
+            # only plot values below diagonal
+            if centers["y"] > centers["x"]: 
+                continue
+            val = hist.GetBinContent(i)
+            if val>0.6:
+                outhist.SetBinContent(200, 1.)
+            else:
+                outhist.Fill(val)
+
+        return outhist
 
     def draw_plot(self, effMap = None, pdfFile = None, title = "", zTitle = "", shiftZ = 0., err = False):
         '''draw a single plot on a single page of pdfFile'''
@@ -604,7 +722,7 @@ class systMap(object):
 class multiPagePDF(object):
     '''class for producing multipage PDF file'''
 
-    def __init__(self, outFileName = "", title = "_NoTitle_"):
+    def __init__(self, outFileName = "", title = "_NoTitle_", title_page = True):
         self._canv = r.TCanvas() # FIXME: pick good size
         self._fName = outFileName
         self._pageNums = True
@@ -612,7 +730,12 @@ class multiPagePDF(object):
         self._analyst = "Chris Lucas"
         self._title = title
         self._pageCtr = 1 #initiate page numbers
-        self.makeTitlePage()
+        self._title_page = title_page
+        if self._title_page:
+            self.makeTitlePage()
+
+    def setLogY(self, val = None):
+        self._canv.SetLogy(val)
 
     def makeTitlePage(self):
         '''make a title page with title, name, date'''
@@ -643,7 +766,10 @@ class multiPagePDF(object):
         num = r.TLatex(0.97,0.025,"%d"%(self._pageCtr))
         num.SetNDC()
         if self._pageNums: num.Draw("same")
-        self._canv.Print(self._fName)
+        if not self._title_page and self._pageCtr == 1:
+            self._canv.Print(self._fName + "(")
+        else:
+            self._canv.Print(self._fName)
         self._pageCtr += 1
         pass
 

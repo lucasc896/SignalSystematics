@@ -13,16 +13,16 @@ r.TH1.SetDefaultSumw2(1)
 r.TH2.SetDefaultSumw2(1)
 
 settings = {
-    "model":["T2cc", "T1ttcc", "T2tt", "T2bb", "T2_4body", "T2bw_0p25", "T2bw_0p75", "pmssm"][0],
+    "model":["T2cc", "T1ttcc", "T2tt", "T2bb", "T2_4body", "T2bw_0p25", "T2bw_0p75", "pmssm"][-3],
     "HTBins":["200_275", "275_325", "325_375", "375_475", "475_575", "575_675", "675_775", "775_875", "875_975", "975_1075", "1075"],
     "deltaM":[False, True][0],
-    "jMulti":["le3j", "ge4j", "ge2j", "eq2j", "eq3j", "eq4j", "ge5j"][:2],
-    "bMulti":["eq0b","eq1b","eq2b","eq3b","ge0b"][:-1],
+    "jMulti":["le3j", "ge4j", "ge2j", "eq2j", "eq3j", "eq4j", "ge5j"][:3],
+    "bMulti":["eq0b","eq1b","eq2b","eq3b","ge0b"],
     "SITV":[False, True][1],
     "run_mode":["eff_maps", "sitv_acceptance", "leptVeto_acceptance", "btag_compare", "minbias_acceptance"][0],
     "combine_output":[False, True][0],
     "text_plot":[False, True][1],
-    "sele":["had","muon"][1]
+    "sele":["had","muon"][0]
 }
 
 def set_palette(name="", ncontours=30):
@@ -249,6 +249,11 @@ def get_hist_stat_vals(hist=None):
     for i in range(hist.GetNbinsX()*hist.GetNbinsY() + 1000):
         val = abs(hist.GetBinContent(i))
 
+        xbin, ybin, zbin = r.Long(0.), r.Long(0.), r.Long(0.)
+        hist.GetBinXYZ(i, xbin, ybin, zbin)
+
+        if hist.GetXaxis().GetBinCenter(xbin) > 650.: continue
+
         if val == 1000.: continue
 
         if val > 0.:
@@ -263,6 +268,9 @@ def get_hist_stat_vals(hist=None):
         avg_ /= float(count_)
     except ZeroDivisionError:
         avg_ = 0.
+
+    if min_ == 1.:
+        min_ = 0.
 
     return [min_, max_, avg_]
 
@@ -280,6 +288,9 @@ def make_eff_map_plot(file73 = None, file87 = None, file100 = None, bMulti = "",
     r.gPad.SetTopMargin(0.08)
     r.gPad.SetBottomMargin(0.15)
 
+    if settings['model'] not in ['T2cc', 'T2_4body']:
+        settings['text_plot'] = False
+
     if settings["deltaM"]:
         xRange = mapDMRanges[settings["model"]][0]
         yRange = mapDMRanges[settings["model"]][1]
@@ -288,7 +299,10 @@ def make_eff_map_plot(file73 = None, file87 = None, file100 = None, bMulti = "",
         xRange = mapRanges[settings["model"]][0]
         yRange = mapRanges[settings["model"]][1]
 
-    rebin_y_val = 1
+    if settings['model'] == "T2_4body":
+        rebin_y_val = 2
+    else:
+        rebin_y_val = 1
 
     nocuts = GetHist(File = file100,folder = ["smsScan_before",],hist = "m0_m12_mChi_weight", Norm = None, rebinY=rebin_y_val)
     nocuts = threeToTwo(nocuts)
@@ -337,6 +351,7 @@ def make_eff_map_plot(file73 = None, file87 = None, file100 = None, bMulti = "",
         pass
     else:
         eff.GetZaxis().SetRangeUser(0.,getScanMax(eff))
+        # eff.GetZaxis().SetRangeUser(0., 0.03)
 
     eff.SetTitleSize(0.05,"x")
     eff.SetTitleOffset(1.2,"x")
@@ -348,7 +363,7 @@ def make_eff_map_plot(file73 = None, file87 = None, file100 = None, bMulti = "",
     eff.SetLabelSize(0.04, "z")
 
     eff.SetTitle("Total Efficiency - %s %s"%(bMulti, jMulti))
-
+    eff.SetTitle("")
     if settings["text_plot"]:
         r.gStyle.SetPaintTextFormat("0.4f");
         eff.SetMarkerSize(0.8)

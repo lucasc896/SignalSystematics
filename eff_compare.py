@@ -5,6 +5,8 @@ from model_versions import versions
 from itertools import product
 from copy import deepcopy
 
+sutils.set_palette(ncontours = 50)
+
 r.gStyle.SetOptStat(0)
 r.gROOT.SetBatch(r.kTRUE)
 
@@ -12,10 +14,10 @@ r.TH1.SetDefaultSumw2(1)
 r.TH2.SetDefaultSumw2(1)
 
 settings = {
-    "model1":["T2cc", "T1ttcc", "T2tt", "T2bb", "T2_4body", "T2bw_0p25", "T2bw_0p75"][0], # this should be T2cc!
-    "version1":35,
-    "model2":["T2cc", "T1ttcc", "T2tt", "T2bb", "T2_4body", "T2bw_0p25", "T2bw_0p75"][0],
-    "version2":38,
+    "model1":["T2cc", "T1ttcc", "T2tt", "T2bb", "T2_4body", "T2bw_0p25", "T2bw_0p75"][-3], # this should be T2cc!
+    "version1":23,
+    "model2":["T2cc", "T1ttcc", "T2tt", "T2bb", "T2_4body", "T2bw_0p25", "T2bw_0p75"][-3],
+    "version2":19,
     "HTBins":["200_275", "275_325", "325_375", "375_475", "475_575", "575_675", "675_775", "775_875", "875_975", "975_1075", "1075"],
     "deltaM":[False, True][0],
     "jMulti":["le3j", "ge4j", "ge2j", "eq2j", "eq3j", "eq4j", "ge5j"][:3],
@@ -83,6 +85,9 @@ def get_eff_map(files={}, bMulti="", jMulti="", aT_ = [0.55, None]):
     # cutsJESPlusHist = sutils.GetHist(File=files["hi"], folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, htbins = settings['HTBins'], sitv_ = settings["SITV"], aT = aT_)[3:], hist="m0_m12_mChi_weight", Norm=None, rebinY=1)
     cutsJESPlusHist = sutils.threeToTwo(cutsJESPlusHist)
 
+    # nocuts.RebinY(2)
+    # cutsJESPlusHist.RebinY(2)
+
     return pcla.effMap(cutsJESPlusHist, nocuts)
 
 def compare_effs(effs1 = {}, effs2 = {}, out_string = ""):
@@ -90,17 +95,22 @@ def compare_effs(effs1 = {}, effs2 = {}, out_string = ""):
 
     c1 = r.TCanvas()
     # c1.Divide(1, 3)
-    compare_2d      = r.TH2D("comp_2d", "comp_2d; m_{stop} (GeV); m_{LSP} (GeV);", 13, 62.5, 387.5, 78, -2.5, 387.5)
-    # compare_2d      = r.TH2D("comp_2d", "comp_2d; m_{stop} (GeV); m_{LSP} (GeV);", 38, 87.5, 1037.5, 39, -12.5, 962.5)
+    if settings['model1'] in ['T2cc', 'T2_4body']:
+        compare_2d      = r.TH2D("comp_2d", "comp_2d; m_{stop} (GeV); m_{LSP} (GeV);", 13, 62.5, 387.5, 78, -2.5, 387.5)
+        plotstring = "colztext"
+    else:        
+        compare_2d      = r.TH2D("comp_2d", "comp_2d; m_{stop} (GeV); m_{LSP} (GeV);", 38, 87.5, 1037.5, 39, -12.5, 962.5)
+        plotstring = "colz"
     compare_1d      = r.TH1D("comp_1d", "comp_1d;Eff change", 100, 0., 2.)
     compare_1d_dm10 = r.TH1D("comp_1d_dm10", "comp_1d_dm10;Eff change", 100, 0.7, 1.3)
 
     # sutils.set_palette()
 
-    r.gPad.SetRightMargin(0.21)
-    r.gPad.SetLeftMargin(0.15)
-    r.gPad.SetTopMargin(0.08)
-    r.gPad.SetBottomMargin(0.15)
+    r.gPad.SetRightMargin(0.15)
+    # r.gPad.SetRightMargin(0.21)
+    # r.gPad.SetLeftMargin(0.15)
+    # r.gPad.SetTopMargin(0.08)
+    # r.gPad.SetBottomMargin(0.15)
 
     # deepcopy of effs1, but we'll replace with effs
     compare = deepcopy(effs1)
@@ -124,61 +134,70 @@ def compare_effs(effs1 = {}, effs2 = {}, out_string = ""):
             compare[stopmass][lspmass] = float(effs1[stopmass][lspmass] / effs2[stopmass][lspmass])
             compare_2d.Fill(float(stopmass), float(lspmass), compare[stopmass][lspmass])
             compare_1d.Fill(compare[stopmass][lspmass])
-            if float(stopmass) - float(lspmass) == 10.:
+            if float(stopmass) - float(lspmass) <= 10.:
                 compare_1d_dm10.Fill(compare[stopmass][lspmass])
 
 
     # c1.cd(1)
-    p1 = r.TPad("p1", "p1", .02, .36, .98, 0.98)
-    p1.SetBorderSize(12)
-    p1.SetRightMargin(0.15)
-    p1.SetLeftMargin(0.10)
-    p1.SetTopMargin(0.08)
-    # p1.SetBottomMargin(0.15)
-    p1.Draw()
-    p2 = r.TPad("p2", "p2", .02, .02, .48, 0.35)
-    p2.SetBorderSize(12)
-    p2.SetTopMargin(0.08)
-    p2.SetBottomMargin(0.08)
-    p2.Draw()
-    p3 = r.TPad("p3", "p3", .52, .02, .98, 0.35)
-    p3.SetBorderSize(12)
-    p3.SetTopMargin(0.08)
-    p3.SetBottomMargin(0.08)
-    p3.Draw()    
+    # p1 = r.TPad("p1", "p1", .02, .36, .98, 0.98)
+    # p1.SetBorderSize(12)
+    # p1.SetRightMargin(0.15)
+    # p1.SetLeftMargin(0.10)
+    # p1.SetTopMargin(0.08)
+    # # p1.SetBottomMargin(0.15)
+    # p1.Draw()
+    # p2 = r.TPad("p2", "p2", .02, .02, .48, 0.35)
+    # p2.SetBorderSize(12)
+    # p2.SetTopMargin(0.08)
+    # p2.SetBottomMargin(0.08)
+    # p2.Draw()
+    # p3 = r.TPad("p3", "p3", .52, .02, .98, 0.35)
+    # p3.SetBorderSize(12)
+    # p3.SetTopMargin(0.08)
+    # p3.SetBottomMargin(0.08)
+    # p3.Draw()    
 
-    p1.cd()
+    # title_string = "Eff(#Delta#phi* > 0.3) / Eff(#Delta#phi* > 0.)"
+    title_string = "Their method/Our method"
+
+    # p1.cd()
     r.gStyle.SetPaintTextFormat("0.4f")
     compare_2d.SetMarkerSize(.8)
     compare_2d.SetMarkerColor(r.kWhite)
-    compare_2d.Draw("colztext")
-    # compare_2d.GetZaxis().SetRangeUser(0.9, 1.25)
+    compare_2d.Draw(plotstring)
+    # compare_2d.RebinY(2)
+    # compare_2d.GetZaxis().SetRangeUser(0.5, 1.)
+    compare_2d.GetZaxis().SetRangeUser(0.5, 1.5)
     compare_2d.GetZaxis().SetTitle("Eff change")
-    compare_2d.SetTitle("%s_v%d / %s_v%d" % (settings['model1'], settings['version1'],
-                                                settings['model2'], settings['version2']))
-    # c1.Print(out_string.replace("compare", "compare_2d"))
+    # compare_2d.SetTitle("%s_v%d / %s_v%d" % (settings['model1'], settings['version1'],
+    #                                             settings['model2'], settings['version2']))
+    compare_2d.SetTitle(title_string)
+    c1.Print(out_string.replace("compare", "compare_2d"))
 
     # c1.cd(2)
-    p2.cd()
+    # p2.cd() 
+
     compare_1d.Draw("hist")
     compare_1d.SetLabelSize(0.04, "X")
     compare_1d.SetTitleSize(0.04, "X") 
     compare_1d.SetTitleOffset(0.9, "X")
-    compare_1d.SetTitle("%s_v%d / %s_v%d - all masses" % (settings['model1'], settings['version1'],
-                                                            settings['model2'], settings['version2']))
-    # c1.Print(out_string.replace("compare", "compare_1d"))
+    # compare_1d.SetTitle("%s_v%d / %s_v%d - all masses" % (settings['model1'], settings['version1'],
+    #                                                         settings['model2'], settings['version2']))
+    compare_1d.SetTitle("All Masses")
+    c1.Print(out_string.replace("compare", "compare_1d"))
 
     # c1.cd(3)
-    p3.cd()
+    # p3.cd()
     compare_1d_dm10.Draw("hist")
-    compare_1d_dm10.SetTitle("%s_v%d / %s_v%d - dm10" % (settings['model1'], settings['version1'],
-                                                            settings['model2'], settings['version2']))
+    # compare_1d_dm10.SetTitle("%s_v%d / %s_v%d - dm10" % (settings['model1'], settings['version1'],
+    #                                                         settings['model2'], settings['version2']))
+    compare_1d_dm10.SetTitle("#Delta m_{split} = 10 GeV")
     compare_1d_dm10.SetLabelSize(0.04, "X")
     compare_1d_dm10.SetTitleSize(0.04, "X")
     compare_1d_dm10.SetTitleOffset(0.9, "X")
-    # c1.Print(out_string.replace("compare", "compare_1d_dm10"))
+    c1.Print(out_string.replace("compare", "compare_1d_dm10"))
     # c1.cd()
-    c1.Print(out_string)
+    # c1.Print(out_string)
 
 
 

@@ -6,7 +6,7 @@ import numpy as np
 import math
 from copy import deepcopy
 from model_versions import versions
-from plotDetails import alphaTDict
+from plotDetails import alphaTDict, total_syst_zrange
 from plotting_classes import systMap, multiPagePDF
 
 ###-------------------------------------------------------------------###
@@ -19,17 +19,17 @@ r.TH2.SetDefaultSumw2(1)
 
 
 settings = {
-    "model":    ["T2cc", "T2", "T2_4body", "T2tt", "T2bw_0p25", "T2bw_0p75"][2],
+    "model":    ["T2cc", "T2", "T2_4body", "T2tt", "T2bw_0p25", "T2bw_0p75"][5],
     "mode":     ["JES", "ISR", "bTag", "LeptonVeto", "DeadECAL", "MHT_MET", "3jet"][:1],
-    "systTests":["JES", "ISR", "bTag", "LeptonVeto", "DeadECAL", "MHT_MET", "3jet", "Lumi", "PDF"][:1],
-    "HTBins":   ["200_275", "275_325", "325_375", "375_475", "475_575", "575_675", "675_775", "775_875", "875_975", "975_1075", "1075"][3:],
+    "systTests":["JES", "ISR", "bTag", "LeptonVeto", "DeadECAL", "MHT_MET", "3jet", "Lumi", "PDF"],
+    "HTBins":   ["200_275", "275_325", "325_375", "375_475", "475_575", "575_675", "675_775", "775_875", "875_975", "975_1075", "1075"],
     "deltaM":   [False, True][0],
     "SITV":     [False, True][1],
-    "jMulti":   ["le3j", "ge4j", "ge2j"][:1],
-    "bMulti":   ["eq0b", "eq1b", "eq2b", "eq3b", "ge0b"][:1],
+    "jMulti":   ["le3j", "ge4j", "ge2j"][2:],
+    "bMulti":   ["eq0b", "eq1b", "eq2b", "eq3b", "ge0b"][4:],
     "text_plot":[False, True][1],
-    "smooth":   [False, True][0],
-    "s_iters":  10,
+    "smooth":   [False, True][1],
+    "s_iters":  10, #5 seems reasonable
 }
 
 
@@ -72,49 +72,51 @@ for model in flat_systs:
     flat_systs[model]["Lumi"] = 0.023
 
 ###-------------------------------------------------------------------###
-def syst_smooth(eff = None, err = None, iterations = 1):
-    """smooth the eff"""
+# def syst_smooth(eff = None, err = None, iterations = 1):
+#     """smooth the syst"""
 
-    new_hist = eff.Clone()
-    n = 0
-    # note: ONLY WORKS FOR T2CC AND T24BODY because of binning assumptions
-    while n < iterations:
-        for xbin in range(1, eff.GetNbinsX()+100):
-            for ybin in range(1, eff.GetNbinsY()+100):
-                val = eff.GetBinContent(xbin, ybin)
-                if val <= 0.: continue
-                vals = []
-                errs = []
-                for xtmp in range(-2,3):
-                    tmp_val = eff.GetBinContent( xbin+xtmp, ybin+xtmp*5)
-                    if tmp_val > 0.:
-                        if err:
-                            tmp_err = float(err.GetBinContent( xbin+xtmp, ybin+xtmp*5)/tmp_val)
-                        else:
-                            tmp_err = 0.
-                        vals.append(tmp_val)
-                        if tmp_err > 0.:
-                            errs.append(float(1./math.pow(tmp_err, 2)))
-                        else:
-                            errs.append(0.)
+#     new_hist = eff.Clone()
+#     n = 0
+#     # note: ONLY WORKS FOR T2CC AND T24BODY because of binning assumptions
+#     while n < iterations:
+#         for xbin in range(1, eff.GetNbinsX()+100):
+#             for ybin in range(1, eff.GetNbinsY()+100):
+#                 val = eff.GetBinContent(xbin, ybin)
+#                 if val <= 0.: continue
+#                 vals = []
+#                 errs = []
+#                 for xtmp in range(-2,3):
+#                     tmp_val = eff.GetBinContent( xbin+xtmp, ybin+xtmp*5)
+#                     if tmp_val > 0.:
+#                         if err:
+#                             # calculate relative error
+#                             tmp_err = float(err.GetBinContent( xbin+xtmp, ybin+xtmp*5)/tmp_val)
+#                         else:
+#                             tmp_err = 0.
+#                         vals.append(tmp_val)
+#                         if tmp_err > 0.:
+#                             # 1/weight^2
+#                             errs.append(float(1./math.pow(tmp_err, 2)))
+#                         else:
+#                             errs.append(0.)
                 
-                # get weighted average considering errs
-                err_sum = np.sum(errs)
-                if err_sum:
-                    for j in range(len(errs)):
-                        errs[j]/=err_sum
+#                 # get weighted average considering errs
+#                 err_sum = np.sum(errs)
+#                 if err_sum:
+#                     for j in range(len(errs)):
+#                         errs[j]/=err_sum
 
-                    ave_val = np.average(vals, weights=errs)
-                else:
-                    # should only be in here in err == None
-                    print "Non-weighted avg used"
-                    ave_val = np.average(vals)
+#                     ave_val = np.average(vals, weights=errs)
+#                 else:
+#                     # should only be in here in err == None
+#                     print "Non-weighted avg used"
+#                     ave_val = np.average(vals)
 
-                new_hist.SetBinContent(xbin, ybin, ave_val)
-        n+=1
+#                 new_hist.SetBinContent(xbin, ybin, ave_val)
+#         n+=1
 
-        eff = new_hist.Clone()
-    return new_hist
+#         eff = new_hist.Clone()
+#     return new_hist
 
 ###-------------------------------------------------------------------###
 def getRootDirs(bMulti_="", jMulti_="", sitv_=False):
@@ -253,43 +255,53 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
 
         ### get histograms ###
 
-        nocuts = sutils.GetHist(File=centalRootFile100, folder=["smsScan_before", ], hist="m0_m12_mChi_weight", Norm=None, rebinY=1)
+        if settings['model'] == "T2_4body":
+            rebin_y_val = 2
+            # need to change back to nominal binning when creating total systematics, as smoothing assumes a certain binning
+            # rebin_y_val = 1
+        else:
+            rebin_y_val = 1
+
+        nocuts = sutils.GetHist(File=centalRootFile100, folder=["smsScan_before", ], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val)
         nocuts = sutils.threeToTwo(nocuts)
 
-        nocuts_noweight = sutils.GetHist(File=centalRootFile100, folder=["smsScan_before", ], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1)
+        nocuts_noweight = sutils.GetHist(File=centalRootFile100, folder=["smsScan_before", ], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val)
         nocuts_noweight = sutils.threeToTwo(nocuts_noweight)
 
+        # inclusive selection for JES systematic    
+        bMulti_new = "ge0b" if mode == "JES" else bMulti
+        jMulti_new = "ge2j" if mode == "JES" else jMulti
 
-        cutsHist = sutils.GetHist(File=centalRootFile73, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[0:2], hist="m0_m12_mChi_weight", Norm=None, rebinY=1).Clone()
-        cutsHist.Add(sutils.GetHist(File=centalRootFile86, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[2:3], hist="m0_m12_mChi_weight", Norm=None, rebinY=1))
-        cutsHist.Add(sutils.GetHist(File=centalRootFile100, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[3:], hist="m0_m12_mChi_weight", Norm=None, rebinY=1))
+        cutsHist = sutils.GetHist(File=centalRootFile73, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[0:2], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val).Clone()
+        cutsHist.Add(sutils.GetHist(File=centalRootFile86, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[2:3], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val))
+        cutsHist.Add(sutils.GetHist(File=centalRootFile100, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[3:], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val))
         cutsHist = sutils.threeToTwo(cutsHist)
 
-        cutsJESPlusHist = sutils.GetHist(File=jesPlusRootFile73, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[0:2], hist="m0_m12_mChi_weight", Norm=None, rebinY=1).Clone()
-        cutsJESPlusHist.Add(sutils.GetHist(File=jesPlusRootFile86, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[2:3], hist="m0_m12_mChi_weight", Norm=None, rebinY=1))
-        cutsJESPlusHist.Add(sutils.GetHist(File=jesPlusRootFile100, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[3:], hist="m0_m12_mChi_weight", Norm=None, rebinY=1))
+        cutsJESPlusHist = sutils.GetHist(File=jesPlusRootFile73, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[0:2], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val).Clone()
+        cutsJESPlusHist.Add(sutils.GetHist(File=jesPlusRootFile86, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[2:3], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val))
+        cutsJESPlusHist.Add(sutils.GetHist(File=jesPlusRootFile100, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[3:], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val))
         cutsJESPlusHist = sutils.threeToTwo(cutsJESPlusHist)
 
         if not cut_syst:
-            cutsJESNegHist = sutils.GetHist(File=jesNegRootFile73, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'])[0:2], hist="m0_m12_mChi_weight", Norm=None, rebinY=1).Clone()
-            cutsJESNegHist.Add(sutils.GetHist(File=jesNegRootFile86, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'])[2:3], hist="m0_m12_mChi_weight", Norm=None, rebinY=1))
-            cutsJESNegHist.Add(sutils.GetHist(File=jesNegRootFile100, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'])[3:], hist="m0_m12_mChi_weight", Norm=None, rebinY=1))
+            cutsJESNegHist = sutils.GetHist(File=jesNegRootFile73, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'])[0:2], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val).Clone()
+            cutsJESNegHist.Add(sutils.GetHist(File=jesNegRootFile86, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'])[2:3], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val))
+            cutsJESNegHist.Add(sutils.GetHist(File=jesNegRootFile100, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'])[3:], hist="m0_m12_mChi_weight", Norm=None, rebinY=rebin_y_val))
             cutsJESNegHist = sutils.threeToTwo(cutsJESNegHist)
 
-        cutsHist_noweight = sutils.GetHist(File=centalRootFile73, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[0:2], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1).Clone()
-        cutsHist_noweight.Add(sutils.GetHist(File=centalRootFile86, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[2:3], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1))
-        cutsHist_noweight.Add(sutils.GetHist(File=centalRootFile100, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[3:], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1))
+        cutsHist_noweight = sutils.GetHist(File=centalRootFile73, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[0:2], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val).Clone()
+        cutsHist_noweight.Add(sutils.GetHist(File=centalRootFile86, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[2:3], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val))
+        cutsHist_noweight.Add(sutils.GetHist(File=centalRootFile100, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[3:], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val))
         cutsHist_noweight = sutils.threeToTwo(cutsHist_noweight)
 
-        cutsJESPlusHist_noweight = sutils.GetHist(File=jesPlusRootFile73, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[0:2], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1).Clone()
-        cutsJESPlusHist_noweight.Add(sutils.GetHist(File=jesPlusRootFile86, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[2:3], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1))
-        cutsJESPlusHist_noweight.Add(sutils.GetHist(File=jesPlusRootFile100, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[3:], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1))
+        cutsJESPlusHist_noweight = sutils.GetHist(File=jesPlusRootFile73, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[0:2], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val).Clone()
+        cutsJESPlusHist_noweight.Add(sutils.GetHist(File=jesPlusRootFile86, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[2:3], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val))
+        cutsJESPlusHist_noweight.Add(sutils.GetHist(File=jesPlusRootFile100, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'] if mode != "LeptonVeto" else False)[3:], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val))
         cutsJESPlusHist_noweight = sutils.threeToTwo(cutsJESPlusHist_noweight)
 
         if not cut_syst:
-            cutsJESNegHist_noweight = sutils.GetHist(File=jesNegRootFile73, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'])[0:2], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1).Clone()
-            cutsJESNegHist_noweight.Add(sutils.GetHist(File=jesNegRootFile86, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'])[2:3], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1))
-            cutsJESNegHist_noweight.Add(sutils.GetHist(File=jesNegRootFile100, folder=getRootDirs(bMulti_ = bMulti, jMulti_ = jMulti, sitv_ = settings['SITV'])[3:], hist="m0_m12_mChi_noweight", Norm=None, rebinY=1))
+            cutsJESNegHist_noweight = sutils.GetHist(File=jesNegRootFile73, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'])[0:2], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val).Clone()
+            cutsJESNegHist_noweight.Add(sutils.GetHist(File=jesNegRootFile86, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'])[2:3], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val))
+            cutsJESNegHist_noweight.Add(sutils.GetHist(File=jesNegRootFile100, folder=getRootDirs(bMulti_ = bMulti_new, jMulti_ = jMulti_new, sitv_ = settings['SITV'])[3:], hist="m0_m12_mChi_noweight", Norm=None, rebinY=rebin_y_val))
             cutsJESNegHist_noweight = sutils.threeToTwo(cutsJESNegHist_noweight)
 
         if settings["deltaM"]:
@@ -303,15 +315,15 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
                 cutsJESNegHist = sutils.deltaM(cutsJESNegHist)
                 cutsJESNegHist_noweight = sutils.deltaM(cutsJESNegHist_noweight)
 
-        # c5 = r.TCanvas()
-        # cutsHist.Draw("colz")
-        # # cutsHist.GetXaxis().SetRangeUser(350., 500.)
-        # # cutsHist.GetYaxis().SetRangeUser(0., 400.)
+#         c5 = r.TCanvas()
+#         cutsHist.Draw("colztext")
+        # cutsHist.GetXaxis().SetRangeUser(350., 500.)
+        # cutsHist.GetYaxis().SetRangeUser(0., 400.)
         # c5.Print("out/cutHist.pdf")
 
-        # cutsJESPlusHist.Draw("colz")
-        # # cutsJESPlusHist.GetXaxis().SetRangeUser(350., 500.)
-        # # cutsJESPlusHist.GetYaxis().SetRangeUser(0., 400.)
+        # cutsJESPlusHist.Draw("colztext")
+        # cutsJESPlusHist.GetXaxis().SetRangeUser(350., 500.)
+        # cutsJESPlusHist.GetYaxis().SetRangeUser(0., 400.)
         # c5.Print("out/cutPosHist.pdf")
 
         # cutsJESPlusHist.Divide(cutsHist)
@@ -335,14 +347,14 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
 
         # make systMap output pdf file
         my_systMap.print_all("%s_%s" % (bMulti, jMulti), plotText = settings['text_plot'])
-        
 
         # if test mode in list, then add to total systematic
         # only add if point-by-point value is used
         if mode in settings["systTests"] and mode in ["JES", "ISR", "bTag", "LeptonVeto"]:
-            my_syst_hists.append((deepcopy(my_systMap._syst._hist), deepcopy(my_systMap._syst._errHist)))
+            # if mode == "JES": continue
+            pass
+            # my_syst_hists.append((deepcopy(my_systMap._syst._hist), deepcopy(my_systMap._syst._errHist)))
             # my_syst_errhists.append(deepcopy(my_systMap._syst._errHist))
-
         del my_systMap
 
         centalRootFile100.Close()
@@ -359,18 +371,18 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
             jesNegRootFile73.Close()
 
     ### Now should have an array of systematic test histograms to combined into a total syst histo ###
-
     if len(my_syst_hists) == 0:
         return
 
     if "PDF" in settings['systTests']:
         # open Yossof's pdf systematics file
         pdf_file = r.TFile.Open("%s_systematics_shifted.root" % settings['model'], 'READ')
+        # pdf_file = r.TFile.Open("%s_systematics_shifted_shouldbeusedbutnot.root" % settings['model'], 'READ')
         pdf_hist = pdf_file.Get("new_pdf")
         my_syst_hists.append(deepcopy(pdf_hist))
         pdf_file.Close()
 
-
+    # return ""
     # create an empty hist to fill with total systematics
     total_syst_hist = r.TH2D("my_th2", "my_th2", my_syst_hists[0][0].GetNbinsX(), my_syst_hists[0][0].GetXaxis().GetBinLowEdge(1), my_syst_hists[0][0].GetXaxis().GetBinUpEdge(my_syst_hists[0][0].GetNbinsX()),
                                                 my_syst_hists[0][0].GetNbinsY(), my_syst_hists[0][0].GetYaxis().GetBinLowEdge(1), my_syst_hists[0][0].GetYaxis().GetBinUpEdge(my_syst_hists[0][0].GetNbinsY()))
@@ -383,7 +395,7 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
     avg_val = 0.
     count = 0
 
-    print "My syst hists:", my_syst_hists
+    # print "My syst hists:", my_syst_hists
 
     for bin in range(1, my_syst_hists[0][0].GetNbinsX() * my_syst_hists[0][0].GetNbinsY() + 1000):
         if my_syst_hists[0][0].GetBinContent(bin) <= 0.:
@@ -424,7 +436,7 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
                     exit()
                 if this_s_hist.GetYaxis().GetBinCenter(ybin) != my_syst_hists[0][0].GetYaxis().GetBinCenter(ybin):
                     print "Somethings wrong with pdf hist y binning. 2"
-                    print this_s_hist.GetYaxis().GetBinCenter(ybin), my_syst_hists[0][0].GetYaxis().GetBinCenter(ybin)
+                    print this_s_hist.GetYaxis().GetBinCenter(ybin), my_syst_hists[0][0].GetYaxis().GetBinCenter(ybin), ybin
 
                     print this_s_hist.GetXaxis().GetBinLowEdge(1), this_s_hist.GetXaxis().GetBinUpEdge(this_s_hist.GetNbinsX()), this_s_hist.GetNbinsX()
                     print my_syst_hists[0][0].GetXaxis().GetBinLowEdge(1), my_syst_hists[0][0].GetXaxis().GetBinUpEdge(my_syst_hists[0][0].GetNbinsX()), my_syst_hists[0][0].GetNbinsX()
@@ -454,7 +466,6 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
                 flat_val = flat_systs[settings["model"]][flat_test]
             except KeyError:
                 flat_val = 0.
-
             mass_val += flat_val*flat_val
             mass_err += 0.
 
@@ -465,11 +476,14 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
         total_syst_hist.SetBinContent(bin, mass_val)
         total_syst_errhist.SetBinContent(bin, mass_err)
 
-    if settings['smooth']:            
-        # apply smoothing algorithm to the final plot
-        total_syst_hist = sutils.syst_smooth(eff=total_syst_hist, err=None, iterations=settings['s_iters']).Clone()
-
     out_name = getOutFile(model=settings["model"], htbin="incl", format="pdf", bMulti_ = bMulti, jMulti_ = jMulti, mode_ = "total")
+
+    if settings['smooth']:            
+        smooth_canv = r.TCanvas()
+        pre_smooth = total_syst_hist.Clone()
+        # apply smoothing algorithm to the final plot
+        total_syst_hist = sutils.syst_smooth(eff=total_syst_hist, err=total_syst_errhist, iterations=settings['s_iters'], model=settings['model']).Clone()
+        # total_syst_hist.RebinY(2)
 
     syst_vals = []
     for i in range(total_syst_hist.GetNbinsX()*total_syst_hist.GetNbinsY()+1000):
@@ -479,7 +493,7 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
     c_total = r.TCanvas()
     r.gPad.SetRightMargin(0.15)
     total_syst_hist.SetTitle("Total Systematic")
-    total_syst_hist.SetMaximum(0.4)
+    total_syst_hist.SetMaximum(total_syst_zrange(settings['model']))
     if settings["text_plot"] and settings["model"] in ["T2cc", "T2_4body"] :
         r.gStyle.SetPaintTextFormat("0.4f");
         total_syst_hist.SetMarkerSize(0.8)
@@ -541,7 +555,8 @@ if __name__ == "__main__":
     for jM_ in settings["jMulti"]:
         for bM_ in settings["bMulti"]:
             total_syst_txt += "* %s %s *\n" % (bM_, jM_)
-            total_syst_txt += make_syst_map_three(bMulti = bM_, jMulti = jM_)
+            # total_syst_txt += make_syst_map_three(bMulti = bM_, jMulti = jM_)
+            make_syst_map_three(bMulti = bM_, jMulti = jM_)
             total_syst_txt += "\n\n"
 
     print "\n\n", total_syst_txt

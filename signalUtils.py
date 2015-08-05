@@ -211,7 +211,9 @@ def reject_outliers(data, m = 2.):
 
     reject = []
     new = [np.abs(d - np.median(data)) for d in data]
+    print len(new)
     mdev = np.median(new)
+    print mdev
     snew = []
     for d in new:
         if mdev:
@@ -226,10 +228,18 @@ def reject_outliers(data, m = 2.):
 
     return reject
 
-def syst_smooth(eff = None, err = None, iterations = 1):
+def get_bin_centre_vals(hist = None, bin = None):
+    xbin, ybin, zbin = r.Long(0.), r.Long(0.), r.Long(0.)
+    hist.GetBinXYZ(bin, xbin, ybin, zbin)
+
+    return {"x": hist.GetXaxis().GetBinCenter(xbin), "y": hist.GetYaxis().GetBinCenter(ybin)}
+
+def syst_smooth(eff = None, err = None, iterations = 1, model = ""):
     """smooth the eff"""
 
     print "Smoothing%s, %d iterations" % (" with err" if err else "", iterations)
+
+    compressed = True if model in ["T2cc", "T2_4body"] else False
 
     new_hist = eff.Clone()
     itera = 0
@@ -245,39 +255,78 @@ def syst_smooth(eff = None, err = None, iterations = 1):
 
                 vals = []
                 errs = []
-                for xtmp in range(-2,3):
-                    tmp_val = eff.GetBinContent( xbin+xtmp, ybin+xtmp*5)
-                    if tmp_val > 0.:
-                        if err:
-                            # get relative err
-                            tmp_err = float(err.GetBinContent( xbin+xtmp, ybin+xtmp*5)/tmp_val)
-                        else:
-                            tmp_err = 0.
-                        vals.append(tmp_val)
-                        if tmp_err > 0.:
-                            errs.append(float(1./math.pow(tmp_err, 1)))
-                        else:
-                            errs.append(0.)
+                if compressed:
+                    for xtmp in range(-2,3):
+                        tmp_val = eff.GetBinContent( xbin+xtmp, ybin+xtmp*5)
+                        if xtmp == 0: continue
+                        if tmp_val > 0.:
+                            if err:
+                                # get relative err
+                                tmp_err = float(err.GetBinContent( xbin+xtmp, ybin+xtmp*5)/tmp_val)
+                            else:
+                                tmp_err = 0.
+                            vals.append(tmp_val)
+                            if tmp_err > 0.:
+                                errs.append(float(1./math.pow(tmp_err, 1)))
+                            else:
+                                errs.append(0.)
 
-                for ytmp in range(-1,2):
-                    tmp_val = eff.GetBinContent(xbin, ybin+ytmp*2)
-                    if tmp_val > 0.:
-                        if err:
-                            tmp_err = float(err.GetBinContent(xbin, ybin+ytmp*2)/tmp_val)
-                        else:
-                            tmp_err = 0.
-                        vals.append(tmp_val)
-                        if tmp_err > 0.:
-                            errs.append(float(1./math.pow(tmp_err, 1)))
-                        else:
-                            errs.append(0.)
-                     
+                    for ytmp in range(-1,2):
+                        tmp_val = eff.GetBinContent(xbin, ybin+ytmp*2)
+                        if ytmp == 0: continue
+                        if tmp_val > 0.:
+                            if err:
+                                tmp_err = float(err.GetBinContent(xbin, ybin+ytmp*2)/tmp_val)
+                            else:
+                                tmp_err = 0.
+                            vals.append(tmp_val)
+                            if tmp_err > 0.:
+                                errs.append(float(1./math.pow(tmp_err, 1)))
+                            else:
+                                errs.append(0.)
+
+                    # print len(vals), len(errs)
+                    # if len(vals) == 7:
+                    #     print xbin, ybin
+                    #     exit()
+
+                else:
+                    # for all other models, assume x and y binnings are evenly spaced
+                    for xtmp in range(-1,2):
+                        if xtmp == 0: continue
+                        tmp_val = eff.GetBinContent( xbin+xtmp, ybin+xtmp )
+                        if tmp_val > 0.:
+                            if err:
+                                tmp_err = float(err.GetBinContent( xbin+xtmp, ybin+xtmp ) / tmp_val)
+                            else:
+                                tmp_err = 0.
+                            vals.append(tmp_val)
+                            if tmp_err > 0.:
+                                errs.append(float(1./math.pow(tmp_err, 1)))
+                            else:
+                                errs.append(0.)
+
+                    for ytmp in range(-1,2):
+                        if ytmp == 0: continue
+                        tmp_val = eff.GetBinContent( xbin+ytmp, ybin+ytmp )
+                        if tmp_val > 0.:
+                            if err:
+                                tmp_err = float(err.GetBinContent( xbin+ytmp, ybin+ytmp ) / tmp_val)
+                            else:
+                                tmp_err = 0.
+                            vals.append(tmp_val)
+                            if tmp_err > 0.:
+                                errs.append(float(1./math.pow(tmp_err, 1)))
+                            else:
+                                errs.append(0.)
+
                 # if it's one of the 5 GeV mass splitting points...
                 if (eff.GetXaxis().GetBinCenter(xbin) - eff.GetYaxis().GetBinCenter(ybin)) == 5.:
                     # use only the value of the 10 GeV mass splitting bin also to compare with
                     # note: should also include the side bins too
                     vals = [eff.GetBinContent(xbin, ybin), eff.GetBinContent(xbin, ybin-1),]
-
+                    errs = [float(err.GetBinError(xbin, ybin)/eff.GetBinContent(xbin, ybin)),
+                            float(err.GetBinError(xbin, ybin-1)/eff.GetBinContent(xbin, ybin-1)),]
                 # remove outliers from array of values gathered from nearby bins
                 vals_array = np.array(vals)
                 # to_rej = reject_outliers(vals_array)
@@ -286,7 +335,9 @@ def syst_smooth(eff = None, err = None, iterations = 1):
                 # create new lists with outliers rejected
                 new_vals = []
                 new_errs = []
+
                 for n in range(len(vals)):
+                    # print n, len(vals)
                     if n not in to_rej:
                         new_vals.append(vals[n])
                         new_errs.append(errs[n])
@@ -310,9 +361,10 @@ def syst_smooth(eff = None, err = None, iterations = 1):
                     print eff.GetYaxis().GetBinCenter(ybin)
 
                 if abs(ave_val - val)/val > 0.2:
-                    print ">20percent change in smoothing (%.1f, %.1f)" % (eff.GetXaxis().GetBinCenter(xbin),
-                                                                            eff.GetYaxis().GetBinCenter(ybin))
-                    print "Old val: %.5f\nNew val: %.5f" % (val, ave_val)
+                    # print ">20percent change in smoothing (%.1f, %.1f)" % (eff.GetXaxis().GetBinCenter(xbin),
+                    #                                                         eff.GetYaxis().GetBinCenter(ybin))
+                    # print "Old val: %.5f\nNew val: %.5f" % (val, ave_val)
+                    pass
                 if str(ave_val) != "nan":
                     new_hist.SetBinContent(xbin, ybin, ave_val)
         itera+=1

@@ -48,7 +48,7 @@ alphaTDict = {'200,275':[[0.65, None]],
 
 systZRanges = {
 				"JES": 			[0.7,1.3],
-				"ISR": 			[0.7,1.3],
+				"ISR": 			[0.6,1.4],
 				"MHT_MET": 		[0.7,1.3],
 				"DeadECAL": 	[0.7,1.3],
 				"LeptonVeto": 	[0.7,1.3],
@@ -69,3 +69,21 @@ modelPlotDetails = {
 		# "T2tt": newDetails([400., 550.],[200., 350.],[400.,450.],[400.,450.],
 						"m_{Stop} (GeV)","m_{LSP} (GeV)"),
 }
+
+def point_white_list(model = '', x = None, y = None):
+	return {'T2bw_0p25': lambda x,y: x-y >= 100. and x<=800.5,
+			'T2bw_0p75': lambda x,y: x-y >= 100. and x<=800.5,
+			'T2tt': lambda x,y: x-y >= 100. and x<=1000.5,
+			'T2_4body': lambda x,y: x-y >= 0. and x-y <= 81. and x>99. and x<400.}[model]
+
+def total_syst_zrange(model = ''):
+	# return {'T2tt': 0.3,
+	# 		'T2cc': 0.3,
+	# 		'T2_4body': 0.3,}[model]
+	return 0.3
+
+if __name__ == "__main__":
+	for xmass in [200., 500., 1000.]:
+		for ymass in [200., 500., 1000.]:
+			print xmass, ymass
+			print point_white_list('T2bw_0p25')(xmass, ymass)
