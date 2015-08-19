@@ -19,15 +19,15 @@ r.TH2.SetDefaultSumw2(1)
 
 
 settings = {
-    "model":    ["T2cc", "T2", "T2_4body", "T2tt", "T2bw_0p25", "T2bw_0p75"][5],
-    "mode":     ["JES", "ISR", "bTag", "LeptonVeto", "DeadECAL", "MHT_MET", "3jet"][:1],
+    "model":    ["T2cc", "T2", "T2_4body", "T2tt", "T2bw_0p25", "T2bw_0p75"][-2],
+    "mode":     ["JES", "ISR", "bTag", "LeptonVeto", "DeadECAL", "MHT_MET", "3jet"][:-1],
     "systTests":["JES", "ISR", "bTag", "LeptonVeto", "DeadECAL", "MHT_MET", "3jet", "Lumi", "PDF"],
     "HTBins":   ["200_275", "275_325", "325_375", "375_475", "475_575", "575_675", "675_775", "775_875", "875_975", "975_1075", "1075"],
     "deltaM":   [False, True][0],
     "SITV":     [False, True][1],
-    "jMulti":   ["le3j", "ge4j", "ge2j"][2:],
-    "bMulti":   ["eq0b", "eq1b", "eq2b", "eq3b", "ge0b"][4:],
-    "text_plot":[False, True][1],
+    "jMulti":   ["le3j", "ge4j", "ge2j"][1:2],
+    "bMulti":   ["eq0b", "eq1b", "eq2b", "eq3b", "ge0b"][:1],
+    "text_plot":[False, True][0],
     "smooth":   [False, True][1],
     "s_iters":  10, #5 seems reasonable
 }
@@ -352,9 +352,8 @@ def make_syst_map_three(bMulti = "", jMulti = ""):
         # only add if point-by-point value is used
         if mode in settings["systTests"] and mode in ["JES", "ISR", "bTag", "LeptonVeto"]:
             # if mode == "JES": continue
-            pass
-            # my_syst_hists.append((deepcopy(my_systMap._syst._hist), deepcopy(my_systMap._syst._errHist)))
-            # my_syst_errhists.append(deepcopy(my_systMap._syst._errHist))
+            my_syst_hists.append((deepcopy(my_systMap._syst._hist), deepcopy(my_systMap._syst._errHist)))
+            my_syst_errhists.append(deepcopy(my_systMap._syst._errHist))
         del my_systMap
 
         centalRootFile100.Close()
