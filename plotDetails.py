@@ -48,10 +48,11 @@ alphaTDict = {'200,275':[[0.65, None]],
 
 systZRanges = {
 				"JES": 			[0.7,1.3],
-				"ISR": 			[0.6,1.4],
+				"ISR": 			[0.7,1.3],
 				"MHT_MET": 		[0.7,1.3],
 				"DeadECAL": 	[0.7,1.3],
 				"LeptonVeto": 	[0.7,1.3],
+				"bTag": 		[0.7,1.3],
 			}
 
 modelPlotDetails = {
@@ -66,7 +67,7 @@ modelPlotDetails = {
 	"T2bw_0p75": newDetails([0.,1000.],[0.,1000.],[0.,1000.],[0.,1000.],
 						"m_{Stop} (GeV)","m_{LSP} (GeV)"),
 	"T2tt": newDetails([0.,1000.],[0.,1000.],[0.,1000.],[0.,1000.],
-		# "T2tt": newDetails([400., 550.],[200., 350.],[400.,450.],[400.,450.],
+		# "T2tt": newDetails([100., 400.],[100., 400.],[100.,400.],[100.,400.],
 						"m_{Stop} (GeV)","m_{LSP} (GeV)"),
 }
 
