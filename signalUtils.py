@@ -246,8 +246,8 @@ def syst_smooth(eff = None, err = None, iterations = 1, model = ""):
     # note: ONLY WORKS FOR T2CC AND T24BODY because of binning assumptions
     while itera < iterations:
         print "Iter:", itera
-        for xbin in range(1, eff.GetNbinsX()+100):
-            for ybin in range(1, eff.GetNbinsY()+100):
+        for xbin in reversed(range(1, eff.GetNbinsX()+1)):
+            for ybin in range(1, eff.GetNbinsY()+1):
 
                 val = eff.GetBinContent(xbin, ybin)
                 # skip null points
