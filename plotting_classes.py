@@ -59,7 +59,7 @@ def syst_picker(pos = (), neg = ()):
 
 class effMap(object):
     '''container for efficiency map'''
-    def __init__(self, nom = None, denom = None, nom_err = None, denom_err = None, noweight = False):
+    def __init__(self, nom = None, denom = None, nom_err = None, denom_err = None, noweight = False, wlist = None):
         self._hist = None
         self._errHist = None
         self._relErrHist = None
@@ -68,10 +68,13 @@ class effMap(object):
         self._denom = denom
         self._denomerr = denom_err
         self._noweight = noweight #if True, then calculate errors from noweight yields provided
+        self._whitelist = wlist
         self._mean = 0.
         self._max = 0.
         self._min = 1.
         self._rms = 0.
+
+        if not wlist: print "WARNING: No model whitelist specified in effMap object."
 
         # if only a nom is passed (i.e. eff externally calculated)
         if not denom:
@@ -210,14 +213,24 @@ class effMap(object):
         self._min   += shift
         self._max   += shift
 
-        for i in range(1, self._nBins+1):
-            val = self._hist.GetBinContent(i)
-            if val > 0.:
-                self._hist.SetBinContent(i, val+shift)
-            else:
-                # set null points to -666.
-                self._hist.SetBinContent(i, -666.)
-                # self._hist.SetBinContent(i, 0.)
+        for xbin in range(1, self._hist.GetNbinsX()+1):
+            for ybin in range(1, self._hist.GetNbinsY()+1):
+                xval = self._hist.GetXaxis().GetBinCenter(xbin)
+                yval = self._hist.GetYaxis().GetBinCenter(ybin)
+                if not self._whitelist(xval, yval):
+                    self._hist.SetBinContent(xbin, ybin, -666.)
+                    continue
+                val = self._hist.GetBinContent(xbin, ybin)
+                if val != 0.:
+                    self._hist.SetBinContent(xbin, ybin, val+shift)
+                else:
+                    # set null points to -666.
+                    
+                    # if self._whitelist and self._whitelist(xval, yval):
+                        # self._hist.SetBinContent(xbin, ybin, shift)
+                    # else:
+                    self._hist.SetBinContent(xbin, ybin, 0.)
+
 
     def invertHist(self):
         ''' invert an effMap object and all attributes'''
@@ -251,6 +264,8 @@ class systMap(object):
     def __init__(self, up = None, down = None, central = None, nocuts = None, test = "",
                     model = "", up_noweight = None, down_noweight = None, central_noweight = None,
                     nocuts_noweight = None):
+
+        self._debugbin = central.FindBin(400., 300.)
 
         self._yieldPlots = {
                             "up":       up,
@@ -341,19 +356,29 @@ class systMap(object):
                                                 self._yieldPlots['nocuts'],
                                                 self._yieldPlots_noweight['central_noweight'],
                                                 self._yieldPlots_noweight['nocuts_noweight'],
-                                                True)
+                                                True,
+                                                wlist = pdets.point_white_list(self._model))
             self._effs['up']        = effMap(self._yieldPlots['up'],
                                                 self._yieldPlots['nocuts'],
                                                 self._yieldPlots_noweight['up_noweight'],
                                                 self._yieldPlots_noweight['nocuts_noweight'],
-                                                True)
+                                                True,
+                                                wlist = pdets.point_white_list(self._model))
             self._effs['up_change'] = effMap(self._effs['up']._hist,
                                                 self._effs['central']._hist,
                                                 self._effs['up']._errHist,
-                                                self._effs['central']._errHist)
+                                                self._effs['central']._errHist,
+                                                wlist = pdets.point_white_list(self._model))
+            # print "Making Central:", self._effs['central']._hist.GetBinContent(self._debugbin)
+            # print "Making up:", self._effs['up']._hist.GetBinContent(self._debugbin)
+            # print "Making up change:", self._effs['up_change']._hist.GetBinContent(self._debugbin)
             if not self._cutSyst:# and self._test != "LeptonVeto":
                 # only shift to centre around 0 if it's not a cut systematic
                 self._effs['up_change'].shiftCentre(-1)
+
+            # test
+            self._effs['up_change']._hist = self.squash_outliers(self._effs['up_change']._hist)
+            
 
             for key in ['central', 'up_change']:
                 self._effs_1d[key] = self.make_1d_plot(self._effs[key]._hist)
@@ -364,12 +389,15 @@ class systMap(object):
                                                         self._yieldPlots['nocuts'],
                                                         self._yieldPlots_noweight['down_noweight'],
                                                         self._yieldPlots_noweight['nocuts_noweight'],
-                                                        True)
+                                                        True,
+                                                        wlist = pdets.point_white_list(self._model))
                 self._effs['down_change']   = effMap(self._effs['down']._hist,
                                                         self._effs['central']._hist,
                                                         self._effs['down']._errHist,
-                                                        self._effs['central']._errHist)
+                                                        self._effs['central']._errHist,
+                                                        wlist = pdets.point_white_list(self._model))
                 self._effs['down_change'].shiftCentre(-1)
+                self._effs['down_change']._hist = self.squash_outliers(self._effs['down_change']._hist)
                 self._effs_1d['down_change'] = self.make_1d_plot(self._effs['down_change']._hist)
         else:
             exit("No noweights histograms passed to systMap object.")
@@ -379,11 +407,16 @@ class systMap(object):
         # now go on the create a total systematics map          #
         #########################################################
 
+        # test out squashing outliers here instead of in final plot
+        
+
+
         if self._cutSyst:
             ### cut hist scenario ###
             # invert up_change to represent a cut efficiency
             # FIXME: THIS MAY NOT WORK BY CHANGING UP HERE
             self._effs['up_change'].invertHist()
+        # print "After invert up_change:", self._effs['up_change']._hist.GetBinContent(self._debugbin)
 
         # if self._test == "LeptonVeto":
         #   self._effs['up_change'].shiftCentre(-1)
@@ -406,13 +439,14 @@ class systMap(object):
             if self._effs['down_change']:
                 neg_syst = abs(self._effs['down_change']._hist.GetBinContent(i))
                 neg_err = abs(self._effs['down_change']._errHist.GetBinContent(i))
+                # pick the most significant systematic, based on requirements in syst_picker()
+                this_syst, this_err = syst_picker( (pos_syst, pos_err), (neg_syst, neg_err) )
             else:
-                neg_syst = -1.
-                neg_err = 0.000001
+                this_syst = abs(pos_syst)
+                this_err = abs(pos_err)
 
             
-            # pick the most significant systematic, based on requirements in syst_picker()
-            this_syst, this_err = syst_picker( (pos_syst, pos_err), (neg_syst, neg_err) )
+            
 
             # if pos_syst >= neg_syst:
             #     this_syst = pos_syst
@@ -428,15 +462,17 @@ class systMap(object):
             tmp_hist.SetBinContent(i, this_syst)
             tmp_errHist.SetBinContent(i, this_err)
         
+
         # squash the outliers, if there are any
         tmp_hist = self.squash_outliers(tmp_hist)
 
         if self._model not in ["T2cc", "T2_4body"]:
             # fill any holes, so every point has a systematic
             tmp_hist = self.fill_holes(tmp_hist)
+            pass
 
         # create effMap from new total syst hist
-        self._syst = effMap(nom = tmp_hist, nom_err = tmp_errHist)
+        self._syst = effMap(nom = tmp_hist, nom_err = tmp_errHist, wlist = pdets.point_white_list(self._model))
 
         self._syst_1d = self.make_1d_plot(self._syst._hist)
 
@@ -520,35 +556,76 @@ class systMap(object):
         pdf0.close()
 
     def squash_outliers(self, hist = None):
-        vals = []
-        points = []
-        for i in range(1, self._nBins + 1):
-            val = hist.GetBinContent(i)
-            centers = sutils.get_bin_centre_vals(hist, i)
-            if centers['x'] > centers['y']:
-                if val > 0.:
-                    vals.append(val)
-                    points.append(centers)
+        # return hist
+        if [False, True][0]:
+            vals = []
+            points = []
+            for i in range(1, self._nBins + 1):
+                val = hist.GetBinContent(i)
+                centers = sutils.get_bin_centre_vals(hist, i)
+                if centers['x'] > centers['y']:
+                    if val > 0.:
+                        vals.append(val)
+                        points.append(centers)
 
-        to_squash = sutils.reject_outliers(vals, 3.)
+            to_squash = sutils.reject_outliers(vals, 3.)
 
-        print "squash length:", len(to_squash)
+            print "squash length:", len(to_squash)
 
-        for sq in to_squash:
-            # new_val = np.median(vals)*2. #new val to replace outliers
+            for sq in to_squash:
+                # new_val = np.median(vals)*2. #new val to replace outliers
 
-            # try replacing with the median, rather than x2
-            new_val = np.median(vals) #new val to replace outliers - very non-conservative?
+                # try replacing with the median, rather than x2
+                new_val = np.median(vals) #new val to replace outliers - very non-conservative?
 
-            point = points[sq]
-            bin = hist.FindBin(point['x'], point['y'])
-            hist.SetBinContent(bin, new_val)
+                point = points[sq]
+                # bin = hist.FindBin(point['x'], point['y'])
+                xbin = hist.GetXaxis().FindBin(point['x'])
+                ybin = hist.GetYaxis().FindBin(point['y'])
+                new_val = 0.
+                count = 0
+                # all 8 around it
+                myiter = [(xbin+1, ybin), (xbin-1, ybin), (xbin, ybin+1), (xbin, ybin-1),
+                            (xbin+1, ybin+1), (xbin-1, ybin+1), (xbin+1, ybin-1), (xbin-1, ybin-1)]
+                # diag cross (prob only works for T2tt, T2bw)
+                # myiter = [(xbin, ybin+1), (xbin, ybin-1), (xbin-1, ybin+1), (xbin+1, ybin-1)]
+                for var in myiter:
+                    val = hist.GetBinContent(var[0], var[1])
+                    if val > 0. and abs(val) != 666.:
+                        new_val += val
+                        count += 1
+                if new_val != 0.: # this needs to be flexible to -ve and +ve changes
+                    new_val = float(new_val/count)
+
+                hist.SetBinContent(xbin, ybin, new_val)
+        else:
+
+            for xbin in reversed(range(1, hist.GetNbinsX()+1)):
+                for ybin in range(1, hist.GetNbinsY()+1):
+                    myiter = [(xbin, ybin+1), (xbin, ybin-1), (xbin-1, ybin+1), (xbin+1, ybin-1)]
+                    val = hist.GetBinContent(xbin, ybin)
+                    if val <= 0. or val == 666.: continue
+                    neighbourval = 0.
+                    count = 0
+                    for var in myiter:
+                        val2 = hist.GetBinContent(var[0], var[1])
+                        if val2>0. and abs(val2) != 666.:
+                            neighbourval += val2
+                            count += 1
+                    if neighbourval != 0.:
+                        neighbourval = float(neighbourval/count)
+                        if abs(float((val - neighbourval)/neighbourval)) > 0.20:
+                            hist.SetBinContent(xbin, ybin, neighbourval)
 
         return hist
 
     def fill_holes(self, hist = None):
-
-        for xbin in range(1, hist.GetNbinsX()+1):
+        systvals = []
+        for i in range(1, self._nBins+1):
+            val = hist.GetBinContent(i)
+            if val>0.: systvals.append(val)
+        histAvg = np.mean(systvals)
+        for xbin in reversed(range(1, hist.GetNbinsX()+1)):
             for ybin in range(1, hist.GetNbinsY()+1):
                 centers = {'x': hist.GetXaxis().GetBinCenter(xbin),
                             'y': hist.GetYaxis().GetBinCenter(ybin)}
@@ -574,8 +651,8 @@ class systMap(object):
 
                 if len(to_avg) > 0:
                     avgval = np.average(to_avg)
-                    hist.SetBinContent(xbin, ybin, avgval)
-
+                    # hist.SetBinContent(xbin, ybin, avgval)
+                hist.SetBinContent(xbin, ybin, histAvg)
         return hist
 
     def make_1d_plot(self, hist = None):
