@@ -1,0 +1,6 @@
+intermediate set of files that contain the nominal deltaPhi>0.3 cut
+using the accepted jets collection
+the difference being that HCAL masked towers are included in the deadECAL.
+[there's another set of files on the way which contain the deadECAL with a
+5 crystal minimum requirement (instead of 10), so these files are probably
+only to be used to look for any change in eff]
